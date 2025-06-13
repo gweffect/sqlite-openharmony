@@ -81,21 +81,25 @@ func (m Migrator) AlterColumn(value interface{}, name string) error {
 			if field := stmt.Schema.LookUpField(name); field != nil {
 				var sqlArgs []interface{}
 				for i, f := range ddl.fields {
-					if matches := columnRegexp.FindStringSubmatch(f); len(matches) > 1 && matches[1] == field.DBName {
-						ddl.fields[i] = fmt.Sprintf("`%v` ?", field.DBName)
-						sqlArgs = []interface{}{m.FullDataTypeOf(field)}
-						// table created by old version might look like `CREATE TABLE ? (? varchar(10) UNIQUE)`.
-						// FullDataTypeOf doesn't contain UNIQUE, so we need to add unique constraint.
-						if strings.Contains(strings.ToUpper(matches[3]), " UNIQUE") {
-							uniName := m.DB.NamingStrategy.UniqueName(stmt.Table, field.DBName)
-							uni, _ := m.GuessConstraintInterfaceAndTable(stmt, uniName)
-							if uni != nil {
-								uniSQL, uniArgs := uni.Build()
-								ddl.addConstraint(uniName, uniSQL)
-								sqlArgs = append(sqlArgs, uniArgs...)
+					parts := strings.Fields(f)
+					if len(parts) > 0 {
+						columnName := strings.Trim(parts[0], "`'\"")
+						if columnName == field.DBName {
+							ddl.fields[i] = fmt.Sprintf("`%v` ?", field.DBName)
+							sqlArgs = []interface{}{m.FullDataTypeOf(field)}
+							// table created by old version might look like `CREATE TABLE ? (? varchar(10) UNIQUE)`.
+							// FullDataTypeOf doesn't contain UNIQUE, so we need to add unique constraint.
+							if strings.Contains(strings.ToUpper(f), " UNIQUE") {
+								uniName := m.DB.NamingStrategy.UniqueName(stmt.Table, field.DBName)
+								uni, _ := m.GuessConstraintInterfaceAndTable(stmt, uniName)
+								if uni != nil {
+									uniSQL, uniArgs := uni.Build()
+									ddl.addConstraint(uniName, uniSQL)
+									sqlArgs = append(sqlArgs, uniArgs...)
+								}
 							}
+							break
 						}
-						break
 					}
 				}
 				return ddl, sqlArgs, nil
